@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>纯数值农产品换算器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        .converter-input {
+            font-family: 'Roboto Mono', monospace;
+            min-width: 10ch; /* 保证足够的输入空间 */
+        }
+        .input-wrapper {
+            transition: all 0.2s ease-in-out;
+        }
+        .input-wrapper:focus-within {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-4xl mx-auto p-4 md:p-8">
+        <div class="bg-white rounded-2xl shadow-lg p-6 md:p-8">
+            
+            <!-- 标题和描述 -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">农产品换算器</h1>
+                <p class="text-gray-500 mt-2">返璞归真，专注于精确、高效的数值换算。</p>
+            </div>
+
+            <!-- 配置区域 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-gray-50 p-6 rounded-xl border">
+                <div>
+                    <label for="region" class="block text-sm font-medium text-gray-700 mb-2">1. 选择国家/地区</label>
+                    <select id="region" class="w-full p-3 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"></select>
+                </div>
+                <div>
+                    <label for="commodity" class="block text-sm font-medium text-gray-700 mb-2">2. 选择农产品</label>
+                    <select id="commodity" class="w-full p-3 bg-white border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"></select>
+                </div>
+            </div>
+
+            <!-- 换算区域 -->
+            <div id="converter-panel" class="space-y-6">
+                <!-- 动态生成的换算行 -->
+            </div>
+
+        </div>
+        <footer class="text-center mt-6 text-sm text-gray-500">
+            <p>&copy; 2024 智能农业换算工具. 所有数据仅供参考。</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- 数据定义 ---
+        const conversionData = {
+            "英国": { "小麦": { kg: 27.216, lbs: 60 }, "大豆": { kg: 22.680, lbs: 50 }, "大麦": { kg: 22.680, lbs: 50 }, "燕麦": { kg: 17.690, lbs: 39 }, "裸麦": { kg: 25.401, lbs: 56 } },
+            "美国": { "小麦": { kg: 27.216, lbs: 60 }, "大豆": { kg: 27.216, lbs: 60 }, "大麦": { kg: 21.772, lbs: 48 }, "玉米": { kg: 25.401, lbs: 56 }, "裸麦": { kg: 25.401, lbs: 56 } },
+            "加拿大": { "小麦": { kg: 27.216, lbs: 60 }, "大豆": { kg: 27.216, lbs: 60 }, "大麦": { kg: 21.772, lbs: 48 }, "玉米": { kg: 25.401, lbs: 56 }, "裸麦": { kg: 25.401, lbs: 56 } },
+            "澳大利亚": { "小麦": { kg: 27.216, lbs: 60 }, "大豆": { kg: 22.680, lbs: 50 }, "燕麦": { kg: 18.144, lbs: 40 }, "玉米": { kg: 25.401, lbs: 56 }, "裸麦": { kg: 27.216, lbs: 60 } }
+        };
+
+        // --- DOM 元素 ---
+        const regionSelect = document.getElementById('region');
+        const commoditySelect = document.getElementById('commodity');
+        const converterPanel = document.getElementById('converter-panel');
+
+        // --- 状态变量 ---
+        let currentStandard = null;
+        let lastEditedUnit = null;
+        const DECIMAL_PLACES = 5;
+
+        // --- 初始化 ---
+        function initialize() {
+            setupSelectors();
+            updateStandard();
+            addEventListeners();
+        }
+
+        function setupSelectors() {
+            Object.keys(conversionData).forEach(region => regionSelect.add(new Option(region, region)));
+            regionSelect.value = "美国";
+            updateCommodityOptions();
+        }
+        
+        function updateCommodityOptions() {
+            const selectedRegion = regionSelect.value;
+            const commodities = Object.keys(conversionData[selectedRegion]);
+            const currentCommodity = commoditySelect.value;
+            commoditySelect.innerHTML = '';
+            commodities.forEach(c => commoditySelect.add(new Option(c, c)));
+            if (commodities.includes(currentCommodity)) {
+                commoditySelect.value = currentCommodity;
+            }
+        }
+
+        function addEventListeners() {
+            regionSelect.addEventListener('change', () => {
+                updateCommodityOptions();
+                updateStandard();
+            });
+            commoditySelect.addEventListener('change', updateStandard);
+        }
+
+        // --- 核心逻辑 ---
+        function updateStandard() {
+            const region = regionSelect.value;
+            const commodity = commoditySelect.value;
+            if (region && commodity) {
+                currentStandard = conversionData[region][commodity];
+                renderConverter();
+                // 默认以100蒲式耳开始
+                calculateAll('bushels', 100);
+            }
+        }
+
+        function renderConverter() {
+            converterPanel.innerHTML = `
+                <div class="flex flex-col md:flex-row items-center justify-center gap-4 text-xl md:text-2xl text-gray-700">
+                    ${createInputGroup('bushels', '蒲式耳')}
+                    <span class="font-bold text-gray-400">=</span>
+                    ${createInputGroup('kg', '公斤')}
+                    <span class="font-bold text-gray-400">=</span>
+                    ${createInputGroup('lbs', '磅')}
+                </div>
+            `;
+            // 渲染后添加事件监听
+            converterPanel.querySelectorAll('input').forEach(input => {
+                input.addEventListener('input', handleInputChange);
+            });
+        }
+
+        function createInputGroup(unit, label) {
+            return `
+                <div class="flex items-center gap-2">
+                    <div class="input-wrapper bg-gray-100 rounded-lg">
+                         <input type="number" step="any" id="${unit}" data-unit="${unit}"
+                               class="converter-input w-full p-3 text-right bg-transparent border-none focus:ring-0">
+                    </div>
+                    <label for="${unit}" class="font-medium">${label}</label>
+                </div>
+            `;
+        }
+
+        function handleInputChange(event) {
+            const sourceUnit = event.target.dataset.unit;
+            const sourceValue = parseFloat(event.target.value);
+            
+            if (!isNaN(sourceValue)) {
+                lastEditedUnit = sourceUnit;
+                calculateAll(sourceUnit, sourceValue);
+            } else {
+                // 如果输入无效，清空所有框
+                clearAllInputs();
+            }
+        }
+
+        function calculateAll(sourceUnit, sourceValue) {
+            if (!currentStandard) return;
+
+            let bushelsValue = 0;
+
+            // 1. 统一换算成蒲式耳
+            switch (sourceUnit) {
+                case 'bushels':
+                    bushelsValue = sourceValue;
+                    break;
+                case 'kg':
+                    bushelsValue = sourceValue / currentStandard.kg;
+                    break;
+                case 'lbs':
+                    bushelsValue = sourceValue / currentStandard.lbs;
+                    break;
+            }
+
+            // 2. 基于蒲式耳计算其他单位的值
+            const kgValue = bushelsValue * currentStandard.kg;
+            const lbsValue = bushelsValue * currentStandard.lbs;
+            
+            // 3. 更新界面
+            updateInputValue('bushels', bushelsValue);
+            updateInputValue('kg', kgValue);
+            updateInputValue('lbs', lbsValue);
+        }
+
+        function updateInputValue(unit, value) {
+            const input = document.getElementById(unit);
+            if (input && unit !== lastEditedUnit) {
+                // 使用 toFixed 保证小数点位数
+                input.value = value.toFixed(DECIMAL_PLACES);
+            }
+        }
+        
+        function clearAllInputs() {
+             converterPanel.querySelectorAll('input').forEach(input => {
+                input.value = '';
+            });
+        }
+
+        // --- 启动应用 ---
+        initialize();
+    </script>
+</body>
+</html>
